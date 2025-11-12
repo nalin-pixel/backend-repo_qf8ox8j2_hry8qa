@@ -1,15 +1,22 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends, UploadFile, File, Response, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from database import db, create_document, get_documents
 from schemas import Session as SessionSchema, Booking as BookingSchema, User as UserSchema, Coach as CoachSchema, School as SchoolSchema
 
-app = FastAPI(title="Surfbrew API", version="0.2.0")
+# Auth imports using PyJWT for reliability in slim envs
+import jwt
+from passlib.context import CryptContext
+from bson import ObjectId
+import base64
+
+
+app = FastAPI(title="Surfbrew API", version="0.3.2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,6 +25,72 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------- Auth Setup ----------
+SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-surfbrew-key")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 7
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+def verify_password(plain_password: str, password_hash: str) -> bool:
+    try:
+        return pwd_context.verify(plain_password, password_hash)
+    except Exception:
+        return False
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+async def get_current_user(authorization: Optional[str] = Header(None, alias="Authorization")):
+    token: Optional[str] = None
+    if authorization and isinstance(authorization, str) and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    user_doc = db["user"].find_one({"email": email})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user_doc
+
+
+def require_role(*allowed_roles: str):
+    async def _role_dep(user = Depends(get_current_user)):
+        role = user.get("role")
+        if role not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+    return _role_dep
 
 
 # ---------- Utility helpers ----------
@@ -115,6 +188,82 @@ def get_schema():
     }
 
 
+# ---------- Auth routes ----------
+
+class RegisterIn(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: str  # admin|coach|school
+    coach_id: Optional[str] = None
+    school_id: Optional[str] = None
+
+
+@app.post("/auth/register")
+def register_user(payload: RegisterIn):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    if db["user"].find_one({"email": payload.email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    data = {
+        "name": payload.name,
+        "email": payload.email,
+        "password_hash": get_password_hash(payload.password),
+        "role": payload.role,
+        "coach_id": payload.coach_id,
+        "school_id": payload.school_id,
+    }
+    inserted_id = create_document("user", data)
+    return {"id": inserted_id}
+
+
+@app.post("/auth/login", response_model=Token)
+def login(payload: LoginIn):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    user = db["user"].find_one({"email": payload.email})
+    if not user or not verify_password(payload.password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_access_token({"sub": user["email"], "role": user.get("role")})
+    return Token(access_token=token)
+
+
+@app.get("/auth/me")
+def auth_me(user = Depends(get_current_user)):
+    return serialize_doc(user)
+
+
+# ---------- Asset upload & serve ----------
+
+@app.post("/api/upload")
+def upload_image(file: UploadFile = File(...), user = Depends(require_role("admin", "coach", "school"))):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    content = file.file.read()
+    b64 = base64.b64encode(content).decode("utf-8")
+    doc = {
+        "content_type": file.content_type or "application/octet-stream",
+        "data": b64,
+        "filename": file.filename,
+    }
+    asset_id = create_document("asset", doc)
+    return {"url": f"/assets/{asset_id}", "id": asset_id}
+
+
+@app.get("/assets/{asset_id}")
+def get_asset(asset_id: str):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    try:
+        doc = db["asset"].find_one({"_id": ObjectId(asset_id)})
+    except Exception:
+        doc = None
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    content = base64.b64decode(doc.get("data", ""))
+    return Response(content=content, media_type=doc.get("content_type", "application/octet-stream"))
+
+
 # ---------- Sessions ----------
 
 @app.get("/api/sessions")
@@ -161,10 +310,9 @@ def list_sessions(
 
 
 @app.post("/api/sessions")
-def create_session(payload: SessionSchema):
+def create_session(payload: SessionSchema, user = Depends(require_role("admin", "coach", "school"))):
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
-    # Basic normalization
     data = payload.model_dump()
     inserted_id = create_document("session", data)
     return {"id": inserted_id}
@@ -186,7 +334,6 @@ def create_booking(payload: BookingIn):
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
 
-    from bson import ObjectId
     try:
         session_doc = db["session"].find_one({"_id": ObjectId(payload.session_id)})
     except Exception:
@@ -206,7 +353,7 @@ def create_booking(payload: BookingIn):
         "participants": int(payload.participants),
         "experience_level": payload.experience_level,
         "notes": payload.notes,
-        "status": "confirmed",  # as requested: offline payments, auto-confirm
+        "status": "confirmed",
     }
     inserted_id = create_document("booking", booking)
 
@@ -228,6 +375,57 @@ def list_bookings(email: Optional[str] = None, session_id: Optional[str] = None,
     return {"items": items, "count": len(items)}
 
 
+# Admin bookings with filters & actions
+@app.get("/api/admin/bookings")
+def admin_list_bookings(
+    status: Optional[str] = None,
+    q: Optional[str] = Query(None, description="search in name/email"),
+    experience_level: Optional[str] = None,
+    limit: int = 100,
+    user = Depends(require_role("admin", "coach", "school"))
+):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    filt: Dict[str, Any] = {}
+    if status:
+        filt["status"] = status
+    if experience_level:
+        filt["experience_level"] = experience_level
+    if q:
+        filt["$or"] = [
+            {"user_name": {"$regex": q, "$options": "i"}},
+            {"user_email": {"$regex": q, "$options": "i"}},
+        ]
+    items = [serialize_doc(d) for d in db["booking"].find(filt).sort("created_at", -1).limit(int(limit))]
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/admin/bookings/{booking_id}/cancel")
+def cancel_booking(booking_id: str, user = Depends(require_role("admin", "coach", "school"))):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    try:
+        res = db["booking"].update_one({"_id": ObjectId(booking_id)}, {"$set": {"status": "cancelled", "updated_at": datetime.now(timezone.utc)}})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid booking id")
+    if res.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return {"ok": True}
+
+
+@app.post("/api/admin/bookings/{booking_id}/attend")
+def attend_booking(booking_id: str, user = Depends(require_role("admin", "coach", "school"))):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    try:
+        res = db["booking"].update_one({"_id": ObjectId(booking_id)}, {"$set": {"status": "attended", "updated_at": datetime.now(timezone.utc)}})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid booking id")
+    if res.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return {"ok": True}
+
+
 # ---------- Coaches ----------
 
 @app.get("/api/coaches")
@@ -239,7 +437,7 @@ def list_coaches(limit: int = 100):
 
 
 @app.post("/api/coaches")
-def create_coach(payload: CoachSchema):
+def create_coach(payload: CoachSchema, user = Depends(require_role("admin", "coach", "school"))):
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     inserted_id = create_document("coach", payload.model_dump())
@@ -257,7 +455,7 @@ def list_schools(limit: int = 100):
 
 
 @app.post("/api/schools")
-def create_school(payload: SchoolSchema):
+def create_school(payload: SchoolSchema, user = Depends(require_role("admin", "coach", "school"))):
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     inserted_id = create_document("school", payload.model_dump())

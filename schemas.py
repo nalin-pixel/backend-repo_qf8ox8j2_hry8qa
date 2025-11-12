@@ -20,6 +20,11 @@ class User(BaseModel):
     name: str = Field(..., description="Full name of the surfer")
     email: EmailStr = Field(..., description="Email address of the surfer")
     phone: Optional[str] = Field(None, description="Contact phone number")
+    # Authentication/roles (optional fields for accounts used to access Admin)
+    role: Optional[Literal["admin", "coach", "school"]] = Field(None, description="Access role for protected areas")
+    password_hash: Optional[str] = Field(None, description="BCrypt hash of the user's password")
+    coach_id: Optional[str] = Field(None, description="Linked coach id for role=coach")
+    school_id: Optional[str] = Field(None, description="Linked school id for role=school")
 
 
 class Coach(BaseModel):
@@ -28,6 +33,7 @@ class Coach(BaseModel):
     certification: Optional[str] = Field(None, description="Certifications or qualifications")
     school_id: Optional[str] = Field(None, description="Associated school id (if any)")
     rating: Optional[float] = Field(None, ge=0, le=5, description="Average rating 0-5")
+    image_url: Optional[str] = Field(None, description="Public URL to coach image")
 
 
 class School(BaseModel):
@@ -35,6 +41,7 @@ class School(BaseModel):
     location: str = Field(..., description="Primary location / beach")
     description: Optional[str] = Field(None, description="About the school")
     website: Optional[str] = Field(None, description="Website URL")
+    image_url: Optional[str] = Field(None, description="Public URL to school image")
 
 
 SessionType = Literal["group", "private", "recurring"]
@@ -53,6 +60,7 @@ class Session(BaseModel):
     duration_minutes: int = Field(..., gt=0, description="Duration in minutes")
     price: float = Field(..., ge=0, description="Price per person in USD")
     capacity: int = Field(1, ge=1, description="Max participants (1 for private)")
+    image_url: Optional[str] = Field(None, description="Public URL to session image")
 
 
 class Booking(BaseModel):
@@ -62,4 +70,4 @@ class Booking(BaseModel):
     participants: int = Field(1, ge=1, description="Number of participants")
     experience_level: Literal["beginner", "intermediate", "advanced"] = Field(..., description="Surfer experience level for this booking")
     notes: Optional[str] = Field(None, description="Special requests or notes")
-    status: Literal["pending", "confirmed", "cancelled"] = Field("pending", description="Booking status")
+    status: Literal["pending", "confirmed", "cancelled", "attended"] = Field("pending", description="Booking status")
