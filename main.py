@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from database import db, create_document, get_documents
 from schemas import Session as SessionSchema, Booking as BookingSchema, User as UserSchema, Coach as CoachSchema, School as SchoolSchema
 
-app = FastAPI(title="Surfbrew API", version="0.1.0")
+app = FastAPI(title="Surfbrew API", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -160,6 +160,16 @@ def list_sessions(
     return {"items": sessions, "count": len(sessions)}
 
 
+@app.post("/api/sessions")
+def create_session(payload: SessionSchema):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    # Basic normalization
+    data = payload.model_dump()
+    inserted_id = create_document("session", data)
+    return {"id": inserted_id}
+
+
 # ---------- Bookings ----------
 
 class BookingIn(BaseModel):
@@ -167,6 +177,7 @@ class BookingIn(BaseModel):
     user_name: str
     user_email: str
     participants: int = 1
+    experience_level: str
     notes: Optional[str] = None
 
 
@@ -175,8 +186,6 @@ def create_booking(payload: BookingIn):
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
 
-    session_doc = db["session"].find_one({"_id": {"$eq": db["session"].database.client.get_default_database()["session"].codec_options.document_class.__call__.__self__ if False else None}})
-    # Above line is nonsensical; replace with straightforward lookup by string id
     from bson import ObjectId
     try:
         session_doc = db["session"].find_one({"_id": ObjectId(payload.session_id)})
@@ -195,8 +204,9 @@ def create_booking(payload: BookingIn):
         "user_name": payload.user_name,
         "user_email": payload.user_email,
         "participants": int(payload.participants),
+        "experience_level": payload.experience_level,
         "notes": payload.notes,
-        "status": "confirmed",
+        "status": "confirmed",  # as requested: offline payments, auto-confirm
     }
     inserted_id = create_document("booking", booking)
 
@@ -216,6 +226,42 @@ def list_bookings(email: Optional[str] = None, session_id: Optional[str] = None,
 
     items = [serialize_doc(d) for d in db["booking"].find(filt).sort("created_at", -1).limit(int(limit))]
     return {"items": items, "count": len(items)}
+
+
+# ---------- Coaches ----------
+
+@app.get("/api/coaches")
+def list_coaches(limit: int = 100):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    items = [serialize_doc(d) for d in db["coach"].find({}).sort("name", 1).limit(int(limit))]
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/coaches")
+def create_coach(payload: CoachSchema):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    inserted_id = create_document("coach", payload.model_dump())
+    return {"id": inserted_id}
+
+
+# ---------- Schools ----------
+
+@app.get("/api/schools")
+def list_schools(limit: int = 100):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    items = [serialize_doc(d) for d in db["school"].find({}).sort("name", 1).limit(int(limit))]
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/api/schools")
+def create_school(payload: SchoolSchema):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    inserted_id = create_document("school", payload.model_dump())
+    return {"id": inserted_id}
 
 
 if __name__ == "__main__":

@@ -60,5 +60,6 @@ class Booking(BaseModel):
     user_name: str = Field(..., description="Name of the surfer booking")
     user_email: EmailStr = Field(..., description="Contact email")
     participants: int = Field(1, ge=1, description="Number of participants")
+    experience_level: Literal["beginner", "intermediate", "advanced"] = Field(..., description="Surfer experience level for this booking")
     notes: Optional[str] = Field(None, description="Special requests or notes")
     status: Literal["pending", "confirmed", "cancelled"] = Field("pending", description="Booking status")
