@@ -1,37 +1,9 @@
 INFO:     Will watch for changes in these directories: ['/home/workspace']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [688] using StatReload
-INFO:     Started server process [690]
+INFO:     Started reloader process [740] using StatReload
+INFO:     Started server process [742]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     172.20.0.1:58672 - "HEAD / HTTP/1.1" 405 Method Not Allowed
-INFO:     172.20.0.1:58656 - "GET /api/schools HTTP/1.1" 200 OK
-INFO:     172.20.0.1:58644 - "GET /api/sessions?upcoming_only=false&limit=200 HTTP/1.1" 200 OK
-INFO:     172.20.0.1:58656 - "GET /api/schools HTTP/1.1" 200 OK
-INFO:     172.20.0.1:58644 - "GET /api/sessions?upcoming_only=false&limit=200 HTTP/1.1" 200 OK
-INFO:     172.20.0.1:58652 - "GET /api/coaches HTTP/1.1" 200 OK
-INFO:     172.20.0.1:58644 - "GET /api/coaches HTTP/1.1" 200 OK
-INFO:     172.20.0.1:58674 - "GET /api/sessions HTTP/1.1" 200 OK
-INFO:     172.20.0.1:58676 - "GET /api/sessions HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45462 - "GET /api/coaches HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45476 - "GET /api/schools HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45490 - "GET /api/sessions?upcoming_only=false&limit=200 HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45462 - "GET /api/coaches HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45476 - "GET /api/schools HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45490 - "GET /api/sessions?upcoming_only=false&limit=200 HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45462 - "GET /api/schools HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45476 - "GET /api/coaches HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45490 - "GET /api/sessions?upcoming_only=false&limit=200 HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45476 - "GET /api/schools HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45462 - "GET /api/coaches HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45490 - "GET /api/sessions?upcoming_only=false&limit=200 HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45490 - "GET /api/sessions HTTP/1.1" 200 OK
-INFO:     172.20.0.1:45490 - "GET /api/sessions HTTP/1.1" 200 OK
-INFO:     172.20.0.1:37516 - "GET /api/schools HTTP/1.1" 200 OK
-INFO:     172.20.0.1:37502 - "GET /api/coaches HTTP/1.1" 200 OK
-INFO:     172.20.0.1:37492 - "GET /api/sessions?upcoming_only=false&limit=200 HTTP/1.1" 200 OK
-INFO:     172.20.0.1:37516 - "GET /api/schools HTTP/1.1" 200 OK
-INFO:     172.20.0.1:37502 - "GET /api/coaches HTTP/1.1" 200 OK
-INFO:     172.20.0.1:37492 - "GET /api/sessions?upcoming_only=false&limit=200 HTTP/1.1" 200 OK
-INFO:     172.20.0.1:37492 - "GET /api/sessions HTTP/1.1" 200 OK
-INFO:     172.20.0.1:37492 - "GET /api/sessions HTTP/1.1" 200 OK
+INFO:     172.20.0.1:53638 - "HEAD / HTTP/1.1" 405 Method Not Allowed
+INFO:     172.20.0.1:34552 - "GET /api/sessions HTTP/1.1" 200 OK
+INFO:     172.20.0.1:34552 - "GET /api/sessions HTTP/1.1" 200 OK
